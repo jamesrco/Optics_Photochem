@@ -21,8 +21,10 @@
 %% Read in data
 
 % Specify the directory into which you've downloaded the data from the JAZ
-% SD card; these folders should have the format "Download_YYYYMMDD"; these
-% folders should contain the "irrad_" subfolders
+% SD card; the folders in this directory representing each data download
+% should have the format "Download_YYYYMMDD"; these folders should contain
+% the "irrad_" subfolders that you've copied directly off the device SD
+% card (without any further modification)
 
 JAZfiles_directory='/Users/jrcollins/Documents/Research Materials & Journal Articles/Data/2013-2014 Palmer Station field work/Spectra from JAZ/';
 
@@ -128,7 +130,7 @@ times=specdata_20Nov(:,1);
 JAZ_wavelengths = csvread('/Users/jrcollins/Dropbox/High-Lat Lipid Peroxidation/Data/JAZ UV-VIS/JAZ_wavelengths.csv');
 JAZ_wavelengths = JAZ_wavelengths';
 
-% define some spectral ranges (in nm)
+% Define some spectral ranges (in nm)
 
 UVB=[280 315];
 UVA=[315 400];
@@ -141,10 +143,10 @@ UVA_wavelengths=JAZ_wavelengths(ind_UVA);
 
 specdata_20Nov_UVB=specdata_20Nov(:,ind_UVB+3);
 specdata_20Nov_UVA=specdata_20Nov(:,ind_UVA+3);
-% offset because there are 3 columns of nonspectral data in the
+% Offset because there are 3 columns of nonspectral data in the
 % specdata_20Nov matrix
 
-% generate integrated spectral dosages (in uW/cm2) for UVA, UVB at each JAZ timepoint
+% Generate integrated spectral dosages (in uW/cm2) for UVA, UVB at each JAZ timepoint
 
 UVB_dose=nan(length(times),1);
 UVA_dose=nan(length(times),1);
@@ -154,9 +156,10 @@ for i=1:length(times)
     UVA_dose(i,1) = trapz(UVA_wavelengths,specdata_20Nov_UVA(i,:));
 end
 
-% generate cumulative (time-integrated) dosages (in kJ/m^2) at each timepoint
+% Generate cumulative (time-integrated) dosages (in kJ/m^2) at each timepoint
 
-dt=300; % time interval = 300 s
+dt=300; % Time interval = 300 s (this should be whatever sampling interval
+        % you used when you collected the data (a JAZ setting) 
 
 sampinv=[1:dt:dt*length(times)];
 
@@ -174,3 +177,37 @@ subplot(2,1,2)
 plot(times,UVA_dose_cum,'r-',times,UVB_dose_cum,'b-')
 
 dosages_20Nov = [m2xdate(times) UVA_dose UVA_dose_cum UVB_dose UVB_dose_cum];
+
+%% For a depth profile, e.g., in open water in Arthur Harbor, Anvers Island, Antarctica, on 21 Dec 2013
+
+% Assumes you've saved a .mat file containing the (correct) data for just
+% this deployment (N.B. that this is different than for the time-series
+% analysis case, above)
+
+AHprofiles=load('/Users/jrcollins/Dropbox/High-Lat Lipid Peroxidation/Data/JAZ UV-VIS/JAZdata_Arthur_Harbor_profiles_20131221.mat','JAZdata');
+AHprofiles=AHprofiles.JAZdata;
+
+% Read in wavelengths (in nm)
+
+JAZ_wavelengths = csvread('/Users/jrcollins/Dropbox/High-Lat Lipid Peroxidation/Data/JAZ UV-VIS/JAZ_wavelengths.csv');
+JAZ_wavelengths = JAZ_wavelengths';
+
+% Define some spectral ranges (in nm)
+
+UVB=[280 315];
+UVA=[315 400];
+
+ind_UVB=find(JAZ_wavelengths>=UVB(1) & JAZ_wavelengths<UVB(2));
+ind_UVA=find(JAZ_wavelengths>=UVA(1) & JAZ_wavelengths<UVA(2));
+
+UVB_wavelengths=JAZ_wavelengths(ind_UVB);
+UVA_wavelengths=JAZ_wavelengths(ind_UVA);
+
+hold on;
+for i=73:length(AHprofiles(:,1))
+    plot(JAZ_wavelengths,AHprofiles(i,4:end));
+end
+xlabel('Wavelength (nm)');
+ylabel('Irradiance (uW/cm2/nm)');
+hold off;
+
