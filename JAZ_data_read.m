@@ -10,8 +10,8 @@
 %
 % Dependencies and required files:
 %
-% 1. A deployment log file (example given in same GitHub repo where you got
-% this from)
+% 1. A deployment log file (example maintained in same GitHub repo where you got
+% this from; Jaz_deployment_log_example.xlsx)
 % 
 % 2. For subsequent analysis, the .csv file JAZ_wavelengths.csv (also
 % available in the repo), which contains a list of the wavelengths measured
@@ -26,7 +26,7 @@
 % the "irrad_" subfolders that you've copied directly off the device SD
 % card (without any further modification)
 
-JAZfiles_directory='/Users/jrcollins/Documents/Research Materials & Journal Articles/Data/2013-2014 Palmer Station field work/Spectra from JAZ/';
+JAZfiles_directory='/Volumes/dept/C-045/PAL 15-16/PAR and UV-VIS Spec Data/UV-VIS data from Jaz spectrometer (Ocean Optics, Inc.)/';
 
 % Query to find only folders that ultimately contain JAZ data
 JAZDownloadfolders_only=strcat(JAZfiles_directory,'Download*');
@@ -73,7 +73,7 @@ for i=1:length(JAZDownloadfolders)
                       fclose(fileID);
                       inttime = cell2mat(inttime_raw);
                       % Collect data
-                      fileID = fopen(thisoutputfilepath);
+                      fileID = fopen(thisoutputfilepath)
                       formatspec_specdata = '%f %f %f %f';
                       specdata_raw = textscan(fileID,formatspec_specdata,...
                           'HeaderLines',20);
@@ -108,7 +108,7 @@ for i=1:length(JAZDownloadfolders)
        end
 end
 
-%% Make some sense of the suspect data
+%% Make some sense of the suspect, i.e., potentially oversaturated readings
 
 figure;
 
@@ -177,37 +177,3 @@ subplot(2,1,2)
 plot(times,UVA_dose_cum,'r-',times,UVB_dose_cum,'b-')
 
 dosages_20Nov = [m2xdate(times) UVA_dose UVA_dose_cum UVB_dose UVB_dose_cum];
-
-%% For a depth profile, e.g., in open water in Arthur Harbor, Anvers Island, Antarctica, on 21 Dec 2013
-
-% Assumes you've saved a .mat file containing the (correct) data for just
-% this deployment (N.B. that this is different than for the time-series
-% analysis case, above)
-
-AHprofiles=load('/Users/jrcollins/Dropbox/High-Lat Lipid Peroxidation/Data/JAZ UV-VIS/JAZdata_Arthur_Harbor_profiles_20131221.mat','JAZdata');
-AHprofiles=AHprofiles.JAZdata;
-
-% Read in wavelengths (in nm)
-
-JAZ_wavelengths = csvread('/Users/jrcollins/Dropbox/High-Lat Lipid Peroxidation/Data/JAZ UV-VIS/JAZ_wavelengths.csv');
-JAZ_wavelengths = JAZ_wavelengths';
-
-% Define some spectral ranges (in nm)
-
-UVB=[280 315];
-UVA=[315 400];
-
-ind_UVB=find(JAZ_wavelengths>=UVB(1) & JAZ_wavelengths<UVB(2));
-ind_UVA=find(JAZ_wavelengths>=UVA(1) & JAZ_wavelengths<UVA(2));
-
-UVB_wavelengths=JAZ_wavelengths(ind_UVB);
-UVA_wavelengths=JAZ_wavelengths(ind_UVA);
-
-hold on;
-for i=73:length(AHprofiles(:,1))
-    plot(JAZ_wavelengths,AHprofiles(i,4:end));
-end
-xlabel('Wavelength (nm)');
-ylabel('Irradiance (uW/cm2/nm)');
-hold off;
-
