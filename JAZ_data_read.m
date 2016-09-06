@@ -26,7 +26,7 @@
 % the "irrad_" subfolders that you've copied directly off the device SD
 % card (without any further modification)
 
-JAZfiles_directory='/Volumes/dept/C-045/PAL 15-16/PAR and UV-VIS Spec Data/UV-VIS data from Jaz spectrometer (Ocean Optics, Inc.)/';
+JAZfiles_directory='/Volumes/Fair Winds & Following Seas/Science data/2013-2014 Palmer Station field work/Spectra from JAZ/';
 
 % Query to find only folders that ultimately contain JAZ data
 JAZDownloadfolders_only=strcat(JAZfiles_directory,'Download*');
@@ -108,6 +108,24 @@ for i=1:length(JAZDownloadfolders)
        end
 end
 
+%% Some general treatment of wavelengths
+
+% Read in wavelengths (in nm)
+
+JAZ_wavelengths = csvread('/Users/jrcollins/Code/Optics_Photochem/JAZ_wavelengths.csv');
+JAZ_wavelengths = JAZ_wavelengths';
+
+% Define some spectral ranges (in nm)
+
+UVB=[290 315];
+UVA=[315 400];
+
+ind_UVB=find(JAZ_wavelengths>=UVB(1) & JAZ_wavelengths<UVB(2));
+ind_UVA=find(JAZ_wavelengths>=UVA(1) & JAZ_wavelengths<UVA(2));
+
+UVB_wavelengths=JAZ_wavelengths(ind_UVB);
+UVA_wavelengths=JAZ_wavelengths(ind_UVA);
+
 %% Make some sense of the suspect, i.e., potentially oversaturated readings
 
 figure;
@@ -117,29 +135,132 @@ xlabel('Date');
 ylabel('Number of wavelengths at which CCD was saturated');
 datetick('x');
 
+%% Subset entire dataset to only UVB-range data (290-315 nm), then assess oversaturation again
+
+JAZdata_UVB=JAZdata(:,[1:3,ind_UVB+3]);
+
+suspectcount_UVB = 1; % to keep track of # suspect data points
+
+for i=1:size(JAZdata_UVB,1)
+    [a,b]=hist(JAZdata_UVB(i,:),unique(JAZdata_UVB(i,:)));
+    if max(a) >= 3 % use a more stringent measure this time
+        invest_for_possible_saturation_UVB(suspectcount_UVB,1:3) = ...
+            [JAZdata_UVB(i,1) JAZdata_UVB(i,2) max(a)];
+        suspectcount_UVB=suspectcount_UVB+1;
+    end
+end
+
 %% General analysis
+
+%% Extract and save "good" in situ spectra
+
+% eliminates those taken when device was deployed out of water, or with
+% other issues
+
+Insitu_spectra_PAL1314_uW_cm2_all = JAZdata_UVB;
+
+% eliminate readings with missing timestamp
+
+Insitu_spectra_PAL1314_uW_cm2_all = Insitu_spectra_PAL1314_uW_cm2_all(Insitu_spectra_PAL1314_uW_cm2_all(:,1)>0,:);
+
+% extract only "good" data based on JAZ deployment log
+
+Insitu_spectra_PAL1314_uW_cm2 = ...
+    Insitu_spectra_PAL1314_uW_cm2_all(...
+    (Insitu_spectra_PAL1314_uW_cm2_all(:,1)<datenum(2013,11,13,9,0,0)) | ...
+    (Insitu_spectra_PAL1314_uW_cm2_all(:,1)>datenum(2013,11,14,9,0,0) & ...
+    Insitu_spectra_PAL1314_uW_cm2_all(:,1)<datenum(2013,12,3,13,0,0)) | ...
+    (Insitu_spectra_PAL1314_uW_cm2_all(:,1)>datenum(2013,12,14,9,30,0) & ...
+    Insitu_spectra_PAL1314_uW_cm2_all(:,1)<datenum(2013,12,21,11,0,0)),:);
+
+% quick plot to verify
+
+plot(Insitu_spectra_PAL1314_uW_cm2(:,1),Insitu_spectra_PAL1314_uW_cm2(:,30))
+datetick('x')
+
+% export to .csv
+
+csvwrite('UVB_spectra_0.6m_subsurface_PAL1314_uW_cm2.csv',Insitu_spectra_PAL1314_uW_cm2)
+
+%% Integrated UVB band calculations
+
+% wavelength-integrated fluxes
+
+UVB_flux_PAL1314_uW_cm2 = nan(size(JAZdata_UVB,1),2);
+UVB_flux_PAL1314_uW_cm2(:,1) = JAZdata_UVB(:,1);
+
+for i=1:size(UVB_flux_PAL1314_uW_cm2,1)
+    UVB_flux_PAL1314_uW_cm2(i,2) = trapz(UVB_wavelengths,JAZdata_UVB(i,4:end));
+end
+
+% eliminate bad data points (those with missing timestamp)
+
+UVB_flux_PAL1314_uW_cm2 = UVB_flux_PAL1314_uW_cm2(UVB_flux_PAL1314_uW_cm2(:,1)>0,:);
+
+% a quick plot
+
+plot(UVB_flux_PAL1314_uW_cm2(:,1),UVB_flux_PAL1314_uW_cm2(:,2))
+datetick('x')
+
+% daily doses
+
+% first, for a given day, need to determine whether we have complete 24-hr
+% data
+
+% list of all dates for which we have data
+
+UVBdates_all = unique(datetime(year(UVB_flux_PAL1314_uW_cm2(:,1)),...
+    month(UVB_flux_PAL1314_uW_cm2(:,1)),...
+    day(UVB_flux_PAL1314_uW_cm2(:,1))));
+
+% create date subset based on inspection of plot and info recorded in
+% deployment log; eliminates dates for which we have incomplete in-water
+% data (either instrument was not deployed at all, or was not deployed at
+% 0.6 m water depth)
+
+UVBdates_good = UVBdates_all([2:10,13:15,20:37,51:55]);
+
+% calculate daily integrated fluxes using same convention as NOAA ESRL, see
+% http://esrl.noaa.gov/gmd/grad/antuv/docs/netOps/CHAPTER4.PDF, p. 4-25
+
+% preallocate destination matrix
+
+UVB_daily_dose_0_6m_subsurface_PAL1314_kJ_m2 = nan(length(min(UVBdates_all):max(UVBdates_all)),2);
+UVB_daily_dose_0_6m_subsurface_PAL1314_kJ_m2(:,1) = datenum(min(UVBdates_all):max(UVBdates_all));
+
+% make calculations with center of each integration period at local noon
+% for Palmer, NOAA protocol (link above) defines this as approx. 1600 UTC
+%
+% note that the JAZ data J.R.C. recorded during the 2013-2014 field season
+% at Palmer have timestamps in UTC, *not* local time
+
+% identities
+
+W_per_uW = 1/1000000;
+J_per_kJ = 1/1000;
+cm2_per_m2 = 10000;
+
+for i=1:size(UVB_daily_dose_0_6m_subsurface_PAL1314_kJ_m2,1)
+    if ismember(UVB_daily_dose_0_6m_subsurface_PAL1314_kJ_m2(i,1),datenum(UVBdates_good))
+        % define the local noon for this date in MATLAB Julian format
+        thisLocalNoon = datenum(UVB_daily_dose_0_6m_subsurface_PAL1314_kJ_m2(i,1)+datenum(0,0,0,16,0,0));
+        % select the data within the local noon +/- 12 hr window
+        theseUVBData = ...
+            UVB_flux_PAL1314_uW_cm2(...
+            UVB_flux_PAL1314_uW_cm2(:,1)>(thisLocalNoon-datenum(0,0,0,12,0,0)) & ...
+            UVB_flux_PAL1314_uW_cm2(:,1)<(thisLocalNoon+datenum(0,0,0,12,0,0)),:);
+        % calculate the time integrated-dose, in kJ/m2
+        UVB_daily_dose_0_6m_subsurface_PAL1314_kJ_m2(i,2) = ...
+            trapz(theseUVBData(:,1)*24*60*60,theseUVBData(:,2))*...
+            W_per_uW*J_per_kJ*cm2_per_m2;
+    end
+end
 
 %% For time-series data on a given day, e.g., 20 Nov 13
 
 subset_ind=find(JAZdata(:,1)>=datenum(2013,11,20) & JAZdata(:,1)<=datenum(2013,11,21));
 specdata_20Nov=JAZdata(subset_ind,:);
 times=specdata_20Nov(:,1);
-
-% Read in wavelengths (in nm)
-
-JAZ_wavelengths = csvread('/Users/jrcollins/Dropbox/High-Lat Lipid Peroxidation/Data/JAZ UV-VIS/JAZ_wavelengths.csv');
-JAZ_wavelengths = JAZ_wavelengths';
-
-% Define some spectral ranges (in nm)
-
-UVB=[280 315];
-UVA=[315 400];
-
-ind_UVB=find(JAZ_wavelengths>=UVB(1) & JAZ_wavelengths<UVB(2));
-ind_UVA=find(JAZ_wavelengths>=UVA(1) & JAZ_wavelengths<UVA(2));
-
-UVB_wavelengths=JAZ_wavelengths(ind_UVB);
-UVA_wavelengths=JAZ_wavelengths(ind_UVA);
 
 specdata_20Nov_UVB=specdata_20Nov(:,ind_UVB+3);
 specdata_20Nov_UVA=specdata_20Nov(:,ind_UVA+3);
