@@ -18,6 +18,24 @@
 % by the instrument (list provided specific to the instrument J.R.C. used
 % to collect data; verify that the range of your instrument is same)
 
+%% Some general treatment of wavelengths
+
+% Read in wavelengths (in nm)
+
+JAZ_wavelengths = csvread('/Users/jrcollins/Code/Optics_Photochem/JAZ_wavelengths.csv');
+JAZ_wavelengths = JAZ_wavelengths';
+
+% Define some spectral ranges (in nm)
+
+UVB=[290 315];
+UVA=[315 400];
+
+ind_UVB=find(JAZ_wavelengths>=UVB(1) & JAZ_wavelengths<UVB(2));
+ind_UVA=find(JAZ_wavelengths>=UVA(1) & JAZ_wavelengths<UVA(2));
+
+UVB_wavelengths=JAZ_wavelengths(ind_UVB);
+UVA_wavelengths=JAZ_wavelengths(ind_UVA);
+
 %% Read in data
 
 % Specify the directory into which you've downloaded the data from the JAZ
@@ -26,10 +44,23 @@
 % the "irrad_" subfolders that you've copied directly off the device SD
 % card (without any further modification)
 
-JAZfiles_directory='/Volumes/Fair Winds & Following Seas/Science data/2013-2014 Palmer Station field work/Spectra from JAZ/';
+% -------- For entire data sets
+
+JAZfiles_directory='/Users/jrcollins/Code/LipidPhotoOxBox/data/raw/JAZ_UV-VIS/raw_spectra/PAL1314/';
 
 % Query to find only folders that ultimately contain JAZ data
 JAZDownloadfolders_only=strcat(JAZfiles_directory,'Download*');
+
+% -------- end section for entire data sets
+
+% % -------- For individual wavelength profiles
+% 
+% JAZfiles_directory='/Users/jrcollins/Code/LipidPhotoOxBox/data/raw/JAZ_UV-VIS/raw_spectra/PAL1516/';
+% 
+% % Query to find only folders that ultimately contain JAZ data
+% JAZDownloadfolders_only=strcat(JAZfiles_directory,'Station B - 20151215*');
+% 
+% % -------- end section for individual wavelength profiles
 
 % Execute query to find the folders that have spectral data ("irrad" directories) in them 
 JAZDownloadfolders = dir(JAZDownloadfolders_only);
@@ -38,7 +69,9 @@ insertrow=1; % Set to 1 to build a new file starting at row 1, or can manually
 % change to any row in your JAZdata matrix where you'd like new data
 % appended
 
-suspectcount=1; % To keep track of how many suspect records we have
+% Counters to keep track of how many suspect records we have
+suspectcount=1; 
+suspectcount_UVB=1;
 
 for i=1:length(JAZDownloadfolders)
        thisdir = JAZDownloadfolders(i,1).name; % Get the name of the directory
@@ -79,52 +112,96 @@ for i=1:length(JAZDownloadfolders)
                           'HeaderLines',20);
                       fclose(fileID);
                       specdata = cell2mat(specdata_raw);
-                      % Do a little test to see if the instrument was
+                      
+                      % Do some tests to see if the instrument was
                       % saturated at any wavelength during this
-                      % measurement; we can infer this if there are many
-                      % repeated high values in col 3 of the JAZ data output
-                      % we'll use 5 repetitions as the threshold to flag
+                      % measurement, or saturated in the UVB range;
+                      % we can infer this if there are many
+                      % repeated values of large numbers
+                      % in col 3 of the JAZ data output
+                      
+                      % We'll use 3 repetitions as the threshold to flag
                       % the spectrum for further investigation, and write
-                      % some information about those suspect spectra to a
-                      % matrix "invest_for_possible_saturation"
-                      [a,b]=hist(specdata(:,3),unique(specdata(:,3)));
-                      if max(a) >= 5
+                      % some information about those suspect spectra to
+                      % matrices "invest_for_possible_saturation" and 
+                      % "invest_for_possible_saturation_UVB"
+                      
+                      % full spectrum
+                      
+                      [a_full,b_full]=hist(specdata(:,3),unique(specdata(:,3)));
+                      if any(b_full(a_full>=3)==max(specdata(:,3)))
                           invest_for_possible_saturation(suspectcount,1:3) = ...
-                              [spectrum_time inttime max(a)];
+                              [spectrum_time inttime max(a_full)];
                           suspectcount=suspectcount+1;
                       end
-                      % Now, write data to a matrix; only going to write
+                      
+                      % UVB only
+                      
+                      [a_UVB,b_UVB]=hist(specdata(ind_UVB,3),unique(specdata(ind_UVB,3)));
+                      if any(b_UVB(a_UVB>=3)==max(specdata(:,3)))
+                          invest_for_possible_saturation_UVB(suspectcount_UVB,1:3) = ...
+                              [spectrum_time inttime max(a_UVB)];
+                          suspectcount_UVB=suspectcount_UVB+1;
+                      end
+                      
+                      % create an alternate data string 'specdata_QA' in
+                      % which the bad data points that reflect CCD
+                      % saturation are replaced with 'NaN' 
+                      
+                      specdata_QA = specdata;
+                      
+                      for z=1:length(a_full)
+                          if (a_full(z)>=3 && b_full(z)==max(specdata(:,3)))
+                              specdata_QA(specdata_QA(:,3)==b_full(z),4)=NaN;
+                          end
+                      end
+                      
+                      % Now, write data to 2 matrices; only going to write
                       % the final, processed irradiances from col 4 of the
                       % JAZ output file
-                      JAZdata(insertrow,1:2051) = [spectrum_time inttime max(a) specdata(:,4)'];
-                      % Update plot as we read in data
-                      figure(1);
-                      plot(specdata(212:1756,1),specdata(212:1756,4));
-                      title(datestr(spectrum_time));
-                      xlabel('Wavelength (nm)');
-                      ylabel('Irradiance (uW/cm2/nm)');
+                      
+                      % Without file/scan ID name
+                      
+                      JAZdata(insertrow,1:2052) = [spectrum_time inttime max(a_full) max(a_UVB) specdata(:,4)'];
+                      JAZdata_QA(insertrow,1:2052) = [spectrum_time inttime max(a_full) max(a_UVB) specdata_QA(:,4)'];
+
+%                       % With file/scan ID name
+%                       
+%                       % Strip out just the scan file ID number out of the
+%                       % file name
+%                       thisoutputfile_ID = textscan(thisoutputfile,'%10s %4c');
+%                       thisoutputfile_ID = str2double(thisoutputfile_ID(2));
+% 
+%                       JAZdata(insertrow,1:2053) = [thisoutputfile_ID spectrum_time inttime max(a_full) max(a_UVB) specdata(:,4)'];
+%                       JAZdata_QA(insertrow,1:2053) = [thisoutputfile_ID spectrum_time inttime max(a_full) max(a_UVB) specdata_QA(:,4)'];
+                      
+%                       % Update plot as we read in data
+%                       figure(1);
+%                       plot(specdata(212:1756,1),specdata(212:1756,4));
+%                       title(datestr(spectrum_time));
+%                       xlabel('Wavelength (nm)');
+%                       ylabel('Irradiance (uW/cm2/nm)');
+
                       insertrow=insertrow+1;
                   end
        end
 end
 
-%% Some general treatment of wavelengths
+%% save raw data
+% full spectrum, not QA'd, all dates, spectra captured both in situ at 0.6
+% m water depth and in open air
 
-% Read in wavelengths (in nm)
+save('JAZ_UV-VIS_full_spectra_all_PAL1314_uW_cm2.mat','JAZdata')
 
-JAZ_wavelengths = csvread('/Users/jrcollins/Code/Optics_Photochem/JAZ_wavelengths.csv');
-JAZ_wavelengths = JAZ_wavelengths';
-
-% Define some spectral ranges (in nm)
-
-UVB=[290 315];
-UVA=[315 400];
-
-ind_UVB=find(JAZ_wavelengths>=UVB(1) & JAZ_wavelengths<UVB(2));
-ind_UVA=find(JAZ_wavelengths>=UVA(1) & JAZ_wavelengths<UVA(2));
-
-UVB_wavelengths=JAZ_wavelengths(ind_UVB);
-UVA_wavelengths=JAZ_wavelengths(ind_UVA);
+% %% save data from a single profile
+% % full spectra, QA'd
+% 
+% save('JAZ_UV-VIS_full_spectra_AH_profile_20151215_Stn_B_PAL1516_uW_cm2.mat','JAZdata_QA')
+% 
+% % export data to .csv; have to use dlmwrite instead of csvwrite to get
+% % proper precision
+% 
+% dlmwrite('JAZ_UV-VIS_full_spectra_AH_profile_20151215_Stn_B_PAL1516_uW_cm2.csv', JAZdata_QA, 'delimiter', ',', 'precision', 15); 
 
 %% Make some sense of the suspect, i.e., potentially oversaturated readings
 
@@ -132,23 +209,20 @@ figure;
 
 fig=bar(invest_for_possible_saturation(:,1),invest_for_possible_saturation(:,3));
 xlabel('Date');
-ylabel('Number of wavelengths at which CCD was saturated');
+ylabel('Number of wavelengths at which CCD was saturated, full spectrum');
 datetick('x');
 
-%% Subset entire dataset to only UVB-range data (290-315 nm), then assess oversaturation again
+figure;
 
-JAZdata_UVB=JAZdata(:,[1:3,ind_UVB+3]);
+fig=bar(invest_for_possible_saturation_UVB(:,1),invest_for_possible_saturation_UVB(:,3));
+xlabel('Date');
+ylabel('Number of wavelengths at which CCD was saturated, UVB wavelengths only');
+datetick('x');
 
-suspectcount_UVB = 1; % to keep track of # suspect data points
-
-for i=1:size(JAZdata_UVB,1)
-    [a,b]=hist(JAZdata_UVB(i,:),unique(JAZdata_UVB(i,:)));
-    if max(a) >= 3 % use a more stringent measure this time
-        invest_for_possible_saturation_UVB(suspectcount_UVB,1:3) = ...
-            [JAZdata_UVB(i,1) JAZdata_UVB(i,2) max(a)];
-        suspectcount_UVB=suspectcount_UVB+1;
-    end
-end
+% for the PAL1314 data, suspectcount_UVB should be = 1 (and 
+% 'invest_for_possible_saturation_UVB' nonexistent at this point in the 
+% script), indicating that there were no spectra for which the CCD was 
+% saturated in the UVB range
 
 %% General analysis
 
@@ -157,7 +231,7 @@ end
 % eliminates those taken when device was deployed out of water, or with
 % other issues
 
-Insitu_spectra_PAL1314_uW_cm2_all = JAZdata_UVB;
+Insitu_spectra_PAL1314_uW_cm2_all = JAZdata_QA;
 
 % eliminate readings with missing timestamp
 
@@ -165,7 +239,7 @@ Insitu_spectra_PAL1314_uW_cm2_all = Insitu_spectra_PAL1314_uW_cm2_all(Insitu_spe
 
 % extract only "good" data based on JAZ deployment log
 
-Insitu_spectra_PAL1314_uW_cm2 = ...
+Insitu_spectra_PAL1314_uW_cm2_good = ...
     Insitu_spectra_PAL1314_uW_cm2_all(...
     (Insitu_spectra_PAL1314_uW_cm2_all(:,1)<datenum(2013,11,13,9,0,0)) | ...
     (Insitu_spectra_PAL1314_uW_cm2_all(:,1)>datenum(2013,11,14,9,0,0) & ...
@@ -175,22 +249,42 @@ Insitu_spectra_PAL1314_uW_cm2 = ...
 
 % quick plot to verify
 
-plot(Insitu_spectra_PAL1314_uW_cm2(:,1),Insitu_spectra_PAL1314_uW_cm2(:,30))
-datetick('x')
+figure;
 
-% export to .csv
+plot(Insitu_spectra_PAL1314_uW_cm2_good(:,1),Insitu_spectra_PAL1314_uW_cm2_good(:,30))
+datetick('x')     
 
-csvwrite('UVB_spectra_0.6m_subsurface_PAL1314_uW_cm2.csv',Insitu_spectra_PAL1314_uW_cm2)
+% save .mat file
+
+save('JAZ_UV-VIS_full_spectra_0.6m_subsurface_PAL1314_uW_cm2_QA.mat','Insitu_spectra_PAL1314_uW_cm2_good')
+
+% export full spectrum data to .csv; have to use dlmwrite instead of csvwrite to get
+% proper precision
+
+dlmwrite('JAZ_UV-VIS_full_spectra_0.6m_subsurface_PAL1314_uW_cm2_QA.csv', Insitu_spectra_PAL1314_uW_cm2_good, 'delimiter', ',', 'precision', 15); 
+
+%% Create subset of just UVB band
+
+Insitu_UVB_spectra_PAL1314_uW_cm2_good=Insitu_spectra_PAL1314_uW_cm2_good(:,[1:4,ind_UVB+4]);
+
+% save .mat file
+
+save('JAZ_UV-VIS_UVB_wavelengths_0.6m_subsurface_PAL1314_uW_cm2_QA.mat','Insitu_UVB_spectra_PAL1314_uW_cm2_good')
+
+% export UVB data to .csv; have to use dlmwrite instead of csvwrite to get
+% proper precision
+
+dlmwrite('JAZ_UV-VIS_UVB_wavelengths_0.6m_subsurface_PAL1314_uW_cm2_QA.csv', Insitu_UVB_spectra_PAL1314_uW_cm2_good, 'delimiter', ',', 'precision', 15); 
 
 %% Integrated UVB band calculations
 
 % wavelength-integrated fluxes
 
-UVB_flux_PAL1314_uW_cm2 = nan(size(JAZdata_UVB,1),2);
-UVB_flux_PAL1314_uW_cm2(:,1) = JAZdata_UVB(:,1);
+UVB_flux_PAL1314_uW_cm2 = nan(size(Insitu_UVB_spectra_PAL1314_uW_cm2_good,1),2);
+UVB_flux_PAL1314_uW_cm2(:,1) = Insitu_UVB_spectra_PAL1314_uW_cm2_good(:,1);
 
 for i=1:size(UVB_flux_PAL1314_uW_cm2,1)
-    UVB_flux_PAL1314_uW_cm2(i,2) = trapz(UVB_wavelengths,JAZdata_UVB(i,4:end));
+    UVB_flux_PAL1314_uW_cm2(i,2) = trapz(UVB_wavelengths,Insitu_UVB_spectra_PAL1314_uW_cm2_good(i,5:end));
 end
 
 % eliminate bad data points (those with missing timestamp)
@@ -218,7 +312,7 @@ UVBdates_all = unique(datetime(year(UVB_flux_PAL1314_uW_cm2(:,1)),...
 % data (either instrument was not deployed at all, or was not deployed at
 % 0.6 m water depth)
 
-UVBdates_good = UVBdates_all([2:10,13:15,20:37,51:55]);
+UVBdates_good = UVBdates_all([2:10,13:15,20:37,41:45]);
 
 % calculate daily integrated fluxes using same convention as NOAA ESRL, see
 % http://esrl.noaa.gov/gmd/grad/antuv/docs/netOps/CHAPTER4.PDF, p. 4-25
@@ -255,6 +349,15 @@ for i=1:size(UVB_daily_dose_0_6m_subsurface_PAL1314_kJ_m2,1)
             W_per_uW*J_per_kJ*cm2_per_m2;
     end
 end
+
+% save .mat file
+
+save('Daily_int_UVB_dose_0.6m_subsurface_PAL1314_kJ_m2.mat','UVB_daily_dose_0_6m_subsurface_PAL1314_kJ_m2')
+
+% export UVB doses to .csv; have to use dlmwrite instead of csvwrite to get
+% proper precision
+
+dlmwrite('Daily_int_UVB_dose_0.6m_subsurface_PAL1314_kJ_m2.csv', UVB_daily_dose_0_6m_subsurface_PAL1314_kJ_m2, 'delimiter', ',', 'precision', 8); 
 
 %% For time-series data on a given day, e.g., 20 Nov 13
 
