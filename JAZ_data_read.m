@@ -247,6 +247,12 @@ Insitu_spectra_PAL1314_uW_cm2_good = ...
     (Insitu_spectra_PAL1314_uW_cm2_all(:,1)>datenum(2013,12,14,9,30,0) & ...
     Insitu_spectra_PAL1314_uW_cm2_all(:,1)<datenum(2013,12,21,11,0,0)),:);
 
+% % extract data from open-air deployment from 11-13 Nov 13
+% 
+% Open_air_spectra_PAL1314_11_13Nov13_uW_cm2 = Insitu_spectra_PAL1314_uW_cm2_all(...
+%     (Insitu_spectra_PAL1314_uW_cm2_all(:,1)>datenum(2013,11,11,12,0,0) &...
+%     Insitu_spectra_PAL1314_uW_cm2_all(:,1)<datenum(2013,11,13,12,0,0)),:);
+
 % quick plot to verify
 
 figure;
@@ -262,6 +268,11 @@ save('JAZ_UV-VIS_full_spectra_0.6m_subsurface_PAL1314_uW_cm2_QA.mat','Insitu_spe
 % proper precision
 
 dlmwrite('JAZ_UV-VIS_full_spectra_0.6m_subsurface_PAL1314_uW_cm2_QA.csv', Insitu_spectra_PAL1314_uW_cm2_good, 'delimiter', ',', 'precision', 15); 
+
+% % export open-air 11-13 Nov 13 data to .csv; have to use dlmwrite instead of csvwrite to get
+% % proper precision
+% 
+% dlmwrite('JAZ_UV-VIS_open_air_full_spectra_PAL1314_11_13Nov13_uW_cm2.csv', Open_air_spectra_PAL1314_11_13Nov13_uW_cm2, 'delimiter', ',', 'precision', 15); 
 
 %% Create subset of just UVB band
 
@@ -359,16 +370,22 @@ save('Daily_int_UVB_dose_0.6m_subsurface_PAL1314_kJ_m2.mat','UVB_daily_dose_0_6m
 
 dlmwrite('Daily_int_UVB_dose_0.6m_subsurface_PAL1314_kJ_m2.csv', UVB_daily_dose_0_6m_subsurface_PAL1314_kJ_m2, 'delimiter', ',', 'precision', 8); 
 
-%% For time-series data on a given day, e.g., 20 Nov 13
+%% For time-series data on a given day, e.g., 14 Dec 13
 
-subset_ind=find(JAZdata(:,1)>=datenum(2013,11,20) & JAZdata(:,1)<=datenum(2013,11,21));
-specdata_20Nov=JAZdata(subset_ind,:);
-times=specdata_20Nov(:,1);
+subset_ind=find(UVB_flux_PAL1314_uW_cm2(:,1)>=datenum(2013,12,14)...
+    & UVB_flux_PAL1314_uW_cm2(:,1)<datenum(2013,12,15));
+UVB_14Dec=UVB_flux_PAL1314_uW_cm2(subset_ind,:);
+times=UVB_14Dec(:,1);
 
-specdata_20Nov_UVB=specdata_20Nov(:,ind_UVB+3);
-specdata_20Nov_UVA=specdata_20Nov(:,ind_UVA+3);
-% Offset because there are 3 columns of nonspectral data in the
-% specdata_20Nov matrix
+subset_ind=find(Insitu_spectra_PAL1314_uW_cm2_good(:,1)>=datenum(2013,12,14)...
+    & Insitu_spectra_PAL1314_uW_cm2_good(:,1)<datenum(2013,12,15));
+specdata_14Dec=Insitu_spectra_PAL1314_uW_cm2_good(subset_ind,:);
+times=specdata_14Dec(:,1);
+
+specdata_14Dec_UVB=specdata_14Dec(:,ind_UVB+4);
+specdata_14Dec_UVA=specdata_14Dec(:,ind_UVA+4);
+% Offset because there are 4 columns of nonspectral data in the
+% Insitu_spectra_PAL1314_uW_cm2_good matrix
 
 % Generate integrated spectral dosages (in uW/cm2) for UVA, UVB at each JAZ timepoint
 
@@ -376,8 +393,8 @@ UVB_dose=nan(length(times),1);
 UVA_dose=nan(length(times),1);
 
 for i=1:length(times)
-    UVB_dose(i,1) = trapz(UVB_wavelengths,specdata_20Nov_UVB(i,:));
-    UVA_dose(i,1) = trapz(UVA_wavelengths,specdata_20Nov_UVA(i,:));
+    UVB_dose(i,1) = trapz(UVB_wavelengths,specdata_14Dec_UVB(i,:));
+    UVA_dose(i,1) = trapz(UVA_wavelengths,specdata_14Dec_UVA(i,:));
 end
 
 % Generate cumulative (time-integrated) dosages (in kJ/m^2) at each timepoint
