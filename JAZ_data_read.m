@@ -46,7 +46,7 @@ UVA_wavelengths=JAZ_wavelengths(ind_UVA);
 
 % -------- For entire data sets
 
-JAZfiles_directory='/Users/jrcollins/Code/LipidPhotoOxBox/data/raw/JAZ_UV-VIS/raw_spectra/PAL1314/';
+JAZfiles_directory='/Users/jrcollins/Code/LipidPhotoOxBox/data/raw/JAZ_UV_VIS/raw_spectra/PAL1314/';
 
 % Query to find only folders that ultimately contain JAZ data
 JAZDownloadfolders_only=strcat(JAZfiles_directory,'Download*');
@@ -287,6 +287,19 @@ save('JAZ_UV-VIS_UVB_wavelengths_0.6m_subsurface_PAL1314_uW_cm2_QA.mat','Insitu_
 
 dlmwrite('JAZ_UV-VIS_UVB_wavelengths_0.6m_subsurface_PAL1314_uW_cm2_QA.csv', Insitu_UVB_spectra_PAL1314_uW_cm2_good, 'delimiter', ',', 'precision', 15); 
 
+%% Create subset of just UVA band
+
+Insitu_UVA_spectra_PAL1314_uW_cm2_good=Insitu_spectra_PAL1314_uW_cm2_good(:,[1:4,ind_UVA+4]);
+
+% save .mat file
+
+save('JAZ_UV-VIS_UVA_wavelengths_0.6m_subsurface_PAL1314_uW_cm2_QA.mat','Insitu_UVA_spectra_PAL1314_uW_cm2_good')
+
+% export UVB data to .csv; have to use dlmwrite instead of csvwrite to get
+% proper precision
+
+dlmwrite('JAZ_UV-VIS_UVA_wavelengths_0.6m_subsurface_PAL1314_uW_cm2_QA.csv', Insitu_UVA_spectra_PAL1314_uW_cm2_good, 'delimiter', ',', 'precision', 15); 
+
 %% Integrated UVB band calculations
 
 % wavelength-integrated fluxes
@@ -369,6 +382,89 @@ save('Daily_int_UVB_dose_0.6m_subsurface_PAL1314_kJ_m2.mat','UVB_daily_dose_0_6m
 % proper precision
 
 dlmwrite('Daily_int_UVB_dose_0.6m_subsurface_PAL1314_kJ_m2.csv', UVB_daily_dose_0_6m_subsurface_PAL1314_kJ_m2, 'delimiter', ',', 'precision', 8); 
+
+%% Integrated UVA band calculations
+
+% wavelength-integrated fluxes
+
+UVA_flux_PAL1314_uW_cm2 = nan(size(Insitu_UVA_spectra_PAL1314_uW_cm2_good,1),2);
+UVA_flux_PAL1314_uW_cm2(:,1) = Insitu_UVA_spectra_PAL1314_uW_cm2_good(:,1);
+
+for i=1:size(UVA_flux_PAL1314_uW_cm2,1)
+    UVA_flux_PAL1314_uW_cm2(i,2) = trapz(UVA_wavelengths,Insitu_UVA_spectra_PAL1314_uW_cm2_good(i,5:end));
+end
+
+% eliminate bad data points (those with missing timestamp)
+
+UVA_flux_PAL1314_uW_cm2 = UVA_flux_PAL1314_uW_cm2(UVA_flux_PAL1314_uW_cm2(:,1)>0,:);
+
+% a quick plot
+
+plot(UVA_flux_PAL1314_uW_cm2(:,1),UVA_flux_PAL1314_uW_cm2(:,2))
+datetick('x')
+
+% daily doses
+
+% first, for a given day, need to determine whether we have complete 24-hr
+% data
+
+% list of all dates for which we have data
+
+UVAdates_all = unique(datetime(year(UVA_flux_PAL1314_uW_cm2(:,1)),...
+    month(UVA_flux_PAL1314_uW_cm2(:,1)),...
+    day(UVA_flux_PAL1314_uW_cm2(:,1))));
+
+% create date subset based on inspection of plot and info recorded in
+% deployment log; eliminates dates for which we have incomplete in-water
+% data (either instrument was not deployed at all, or was not deployed at
+% 0.6 m water depth)
+
+UVAdates_good = UVAdates_all([2:10,13:15,20:37,41:45]);
+
+% calculate daily integrated fluxes using same convention as NOAA ESRL, see
+% http://esrl.noaa.gov/gmd/grad/antuv/docs/netOps/CHAPTER4.PDF, p. 4-25
+
+% preallocate destination matrix
+
+UVA_daily_dose_0_6m_subsurface_PAL1314_kJ_m2 = nan(length(min(UVAdates_all):max(UVAdates_all)),2);
+UVA_daily_dose_0_6m_subsurface_PAL1314_kJ_m2(:,1) = datenum(min(UVAdates_all):max(UVAdates_all));
+
+% make calculations with center of each integration period at local noon
+% for Palmer, NOAA protocol (link above) defines this as approx. 1600 UTC
+%
+% note that the JAZ data J.R.C. recorded during the 2013-2014 field season
+% at Palmer have timestamps in UTC, *not* local time
+
+% identities
+
+W_per_uW = 1/1000000;
+J_per_kJ = 1/1000;
+cm2_per_m2 = 10000;
+
+for i=1:size(UVA_daily_dose_0_6m_subsurface_PAL1314_kJ_m2,1)
+    if ismember(UVA_daily_dose_0_6m_subsurface_PAL1314_kJ_m2(i,1),datenum(UVAdates_good))
+        % define the local noon for this date in MATLAB Julian format
+        thisLocalNoon = datenum(UVA_daily_dose_0_6m_subsurface_PAL1314_kJ_m2(i,1)+datenum(0,0,0,16,0,0));
+        % select the data within the local noon +/- 12 hr window
+        theseUVAData = ...
+            UVA_flux_PAL1314_uW_cm2(...
+            UVA_flux_PAL1314_uW_cm2(:,1)>(thisLocalNoon-datenum(0,0,0,12,0,0)) & ...
+            UVA_flux_PAL1314_uW_cm2(:,1)<(thisLocalNoon+datenum(0,0,0,12,0,0)),:);
+        % calculate the time integrated-dose, in kJ/m2
+        UVA_daily_dose_0_6m_subsurface_PAL1314_kJ_m2(i,2) = ...
+            trapz(theseUVAData(:,1)*24*60*60,theseUVAData(:,2))*...
+            W_per_uW*J_per_kJ*cm2_per_m2;
+    end
+end
+
+% save .mat file
+
+save('Daily_int_UVA_dose_0.6m_subsurface_PAL1314_kJ_m2.mat','UVA_daily_dose_0_6m_subsurface_PAL1314_kJ_m2')
+
+% export UVB doses to .csv; have to use dlmwrite instead of csvwrite to get
+% proper precision
+
+dlmwrite('Daily_int_UVA_dose_0.6m_subsurface_PAL1314_kJ_m2.csv', UVA_daily_dose_0_6m_subsurface_PAL1314_kJ_m2, 'delimiter', ',', 'precision', 8); 
 
 %% For time-series data on a given day, e.g., 14 Dec 13
 
